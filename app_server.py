@@ -16,6 +16,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from http import cookies
+from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -53,6 +54,101 @@ def new_id():
 
 def password_digest(password, salt):
     return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PASSWORD_ITERATIONS)
+
+
+def check_auth_rate(path, address):
+    if path not in ("/api/login", "/api/register", "/api/google"):
+        return
+    now = time.monotonic()
+    with AUTH_RATE_LOCK:
+        attempts = [attempt for attempt in AUTH_ATTEMPTS.get(address, []) if now - attempt < AUTH_RATE_WINDOW]
+        if len(attempts) >= AUTH_RATE_LIMIT:
+            raise APIError(429, "Too many account requests. Try again in a minute.")
+        attempts.append(now)
+        AUTH_ATTEMPTS[address] = attempts
+
+
+def create_wsgi_application(application):
+    def respond(start_response, status, body, content_type="application/json; charset=utf-8", extra_headers=None):
+        payload = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False).encode("utf-8")
+        headers = [
+            ("Content-Type", content_type),
+            ("Content-Length", str(len(payload))),
+            ("X-Content-Type-Options", "nosniff"),
+            ("Referrer-Policy", "no-referrer"),
+            ("X-Frame-Options", "DENY"),
+            (
+                "Content-Security-Policy",
+                "default-src 'self'; script-src 'self' https://accounts.google.com; "
+                "style-src 'self' 'unsafe-inline'; connect-src 'self' https://accounts.google.com; "
+                "frame-src https://accounts.google.com; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'",
+            ),
+            ("Cache-Control", "no-store"),
+        ]
+        headers.extend((extra_headers or {}).items())
+        start_response(f"{status} {HTTPStatus(status).phrase}", headers)
+        return [payload]
+
+    def application_call(environ, start_response):
+        method = environ.get("REQUEST_METHOD", "GET").upper()
+        path = environ.get("PATH_INFO", "/")
+        query = parse_qs(environ.get("QUERY_STRING", ""))
+        if path == "/healthz" and method in ("GET", "HEAD"):
+            return respond(start_response, 200, b"ok", "text/plain; charset=utf-8")
+
+        if not path.startswith("/api/") and method in ("GET", "HEAD"):
+            static = STATIC_FILES.get(path)
+            if not static:
+                return respond(start_response, 404, b"Not found", "text/plain; charset=utf-8")
+            try:
+                payload = (ROOT / static[0]).read_bytes()
+            except OSError:
+                return respond(start_response, 500, b"Unable to read app file", "text/plain; charset=utf-8")
+            if path in ("/", "/index.html"):
+                client_id = html.escape(os.environ.get("GOOGLE_CLIENT_ID", "").strip(), quote=True)
+                payload = payload.replace(b"__GOOGLE_CLIENT_ID__", client_id.encode("utf-8"))
+            return respond(start_response, 200, payload, static[1])
+
+        if not path.startswith("/api/"):
+            return respond(start_response, 405, {"error": "Method not allowed."})
+
+        jar = cookies.SimpleCookie()
+        try:
+            jar.load(environ.get("HTTP_COOKIE", ""))
+        except cookies.CookieError:
+            jar = cookies.SimpleCookie()
+        morsel = jar.get("comchat_session")
+        token = morsel.value if morsel else None
+        data = {}
+        headers = {}
+        if method in ("POST", "PATCH"):
+            origin = environ.get("HTTP_ORIGIN")
+            host = environ.get("HTTP_HOST", "").lower()
+            if origin:
+                parsed_origin = urlsplit(origin)
+                if parsed_origin.netloc.lower() != host or parsed_origin.scheme not in ("http", "https"):
+                    return respond(start_response, 403, {"error": "Request origin was not accepted."})
+            try:
+                length = int(environ.get("CONTENT_LENGTH") or "0")
+                if length < 0 or length > MAX_BODY:
+                    return respond(start_response, 413, {"error": "Request body is too large."})
+                raw = environ["wsgi.input"].read(length) if length else b""
+                data = json.loads(raw.decode("utf-8")) if raw else {}
+                if not isinstance(data, dict):
+                    return respond(start_response, 400, {"error": "Request body must be an object."})
+            except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+                return respond(start_response, 400, {"error": "Invalid JSON request body."})
+            try:
+                check_auth_rate(path, environ.get("REMOTE_ADDR", "unknown"))
+            except APIError as error:
+                return respond(start_response, error.status, {"error": str(error)})
+        elif method != "GET":
+            return respond(start_response, 405, {"error": "Method not allowed."})
+
+        status, body, headers = application.dispatch(method, path, query, data, token)
+        return respond(start_response, status, body, extra_headers=headers)
+
+    return application_call
 
 
 class ComChat:
@@ -693,16 +789,7 @@ class Handler(BaseHTTPRequestHandler):
             raise APIError(403, "Request origin was not accepted.")
 
     def _check_auth_rate(self, path):
-        if path not in ("/api/login", "/api/register", "/api/google"):
-            return
-        now = time.monotonic()
-        address = self.client_address[0]
-        with AUTH_RATE_LOCK:
-            attempts = [attempt for attempt in AUTH_ATTEMPTS.get(address, []) if now - attempt < AUTH_RATE_WINDOW]
-            if len(attempts) >= AUTH_RATE_LIMIT:
-                raise APIError(429, "Too many account requests. Try again in a minute.")
-            attempts.append(now)
-            AUTH_ATTEMPTS[address] = attempts
+        check_auth_rate(path, self.client_address[0])
 
     def do_GET(self):
         parsed = urlsplit(self.path)

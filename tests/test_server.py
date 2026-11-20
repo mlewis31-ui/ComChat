@@ -1,12 +1,13 @@
 import io
 import json
 import http.cookies
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app_server import APIError, ComChat
+from app_server import APIError, ComChat, create_wsgi_application
 
 
 class ComChatAPITests(unittest.TestCase):
@@ -37,6 +38,31 @@ class ComChatAPITests(unittest.TestCase):
         cookie = http.cookies.SimpleCookie()
         cookie.load(headers["Set-Cookie"])
         return cookie["comchat_session"].value
+
+    def wsgi_request(self, wsgi, method, path, data=None, cookie=None, origin=None):
+        body = json.dumps(data).encode("utf-8") if data is not None else b""
+        environ = {
+            "REQUEST_METHOD": method,
+            "PATH_INFO": path,
+            "QUERY_STRING": "",
+            "HTTP_HOST": "comchat.example",
+            "REMOTE_ADDR": "127.0.0.1",
+            "wsgi.url_scheme": "https",
+            "wsgi.input": io.BytesIO(body),
+            "CONTENT_LENGTH": str(len(body)),
+        }
+        if cookie:
+            environ["HTTP_COOKIE"] = cookie
+        if origin:
+            environ["HTTP_ORIGIN"] = origin
+        response = {}
+
+        def start_response(status, headers):
+            response["status"] = status
+            response["headers"] = dict(headers)
+
+        payload = b"".join(wsgi(environ, start_response))
+        return response["status"], response["headers"], payload
 
     def test_account_creation_password_login_and_profile(self):
         user, token = self.register("morgan_1", "Morgan")
@@ -70,6 +96,52 @@ class ComChatAPITests(unittest.TestCase):
                 "password": password,
             })
             self.assertEqual(status, 400)
+
+    def test_wsgi_entry_serves_static_page_and_health_check(self):
+        wsgi = create_wsgi_application(self.app)
+        status, headers, body = self.wsgi_request(wsgi, "GET", "/")
+        self.assertEqual(status, "200 OK")
+        self.assertIn("text/html", headers["Content-Type"])
+        self.assertIn(b"ComChat", body)
+        self.assertIn("Content-Security-Policy", headers)
+        status, _, body = self.wsgi_request(wsgi, "GET", "/healthz")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body, b"ok")
+
+    def test_wsgi_entry_supports_auth_cookie_and_origin_protection(self):
+        wsgi = create_wsgi_application(self.app)
+        with patch.dict(os.environ, {"COMCHAT_SECURE_COOKIES": "1"}):
+            status, headers, body = self.wsgi_request(wsgi, "POST", "/api/register", {
+                "username": "wsgi_member",
+                "display_name": "WSGI Member",
+                "password": "a-unique-test-password",
+            })
+        self.assertEqual(status, "201 Created")
+        self.assertIn("Secure", headers["Set-Cookie"])
+        self.assertEqual(json.loads(body)["user"]["username"], "wsgi_member")
+        cookie = http.cookies.SimpleCookie()
+        cookie.load(headers["Set-Cookie"])
+        token = cookie["comchat_session"].value
+
+        status, _, body = self.wsgi_request(
+            wsgi,
+            "GET",
+            "/api/me",
+            cookie=f"comchat_session={token}",
+        )
+        self.assertEqual(status, "200 OK")
+        self.assertTrue(json.loads(body)["user"]["is_admin"])
+
+        status, _, body = self.wsgi_request(
+            wsgi,
+            "POST",
+            "/api/profile",
+            {"display_name": "Bad origin"},
+            cookie=f"comchat_session={token}",
+            origin="https://attacker.example",
+        )
+        self.assertEqual(status, "403 Forbidden")
+        self.assertIn("origin", json.loads(body)["error"])
 
     def test_google_sign_in_creates_and_reuses_the_same_account(self):
         claims = {

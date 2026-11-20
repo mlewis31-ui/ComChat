@@ -25,7 +25,52 @@ PORT=8080 COMCHAT_DATABASE=/path/to/comchat.sqlite3 python3 app_server.py
 The database contains account and conversation data. Back it up securely and
 restrict access to it.
 
-## Create a shareable hosted URL
+## Free hosting with PythonAnywhere
+
+The app now includes a WSGI entry point for PythonAnywhere. Its limited free
+account offers one public `your-username.pythonanywhere.com` web app with
+restricted outbound internet access. Check the current limits before signing
+up; the free plan may not be suitable for a busy or always-available chat.
+Use username/password sign-in there. Google sign-in needs outbound access to
+Google and may not work on a restricted free account.
+
+1. Create a free Beginner account at
+   [PythonAnywhere](https://www.pythonanywhere.com/registration/register/beginner/).
+2. Open a **Bash console** from the Dashboard and clone this public repository:
+
+   ```sh
+   git clone https://github.com/mlewis31-ui/ComChat.git
+   ```
+
+3. Open the **Web** tab and choose **Add a new web app**. Keep the free
+   `your-username.pythonanywhere.com` domain, choose a supported Python 3
+   version, and select **Manual configuration** (not a framework template).
+4. In the Web tab's **Code** section, set **Source code** and **Working
+   directory** to `/home/your-username/ComChat`, replacing `your-username`
+   with the username shown on your PythonAnywhere account.
+5. In the same tab, click the WSGI configuration file link. Replace its
+   contents with the following, again using your actual username:
+
+   ```python
+   import sys
+
+   project_path = "/home/your-username/ComChat"
+   if project_path not in sys.path:
+       sys.path.insert(0, project_path)
+
+   from wsgi import application
+   ```
+
+6. Save the WSGI file, return to the Web tab, and click **Reload**.
+7. Open `https://your-username.pythonanywhere.com`. Create your account first;
+   on a fresh database the first account becomes the administrator. Share that
+   HTTPS address with friends.
+
+`wsgi.py` stores SQLite data at `/home/your-username/comchat.sqlite3`, inside
+your account's persistent home directory. Keep a backup. Do not configure
+multiple app instances to write the same SQLite database.
+
+## Paid Render option
 
 The repository includes a Render Blueprint in `render.yaml`. To deploy:
 
@@ -37,13 +82,13 @@ The repository includes a Render Blueprint in `render.yaml`. To deploy:
 4. Open the hosted URL and create your account first. On an empty database,
    the first account becomes the server administrator.
 
-The blueprint uses a paid Starter web service with a 1 GB persistent disk
-because this app stores accounts and messages in SQLite. Check Render's current
-pricing before applying it. Keep a single service instance: SQLite data on a
-local persistent disk is not shared across multiple instances. The health
-check endpoint is `/healthz`. For Google sign-in, add `GOOGLE_CLIENT_ID` in
-Render's environment settings and authorize the assigned HTTPS origin in
-Google Cloud.
+This blueprint requires payment information and uses a paid Starter web
+service with a 1 GB persistent disk. If you cannot pay, use the free
+PythonAnywhere option above instead. Keep a single Render service instance:
+SQLite data on a local persistent disk is not shared across multiple
+instances. The health check endpoint is `/healthz`. For Google sign-in, add
+`GOOGLE_CLIENT_ID` in Render's environment settings and authorize the assigned
+HTTPS origin in Google Cloud.
 
 This is a small prototype, not a hardened public chat service. Before sharing
 it broadly—especially with minors—add real moderation, abuse reporting,
