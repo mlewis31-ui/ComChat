@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#1e1f25" />
+    <meta name="description" content="ComChat is your space to build communities and talk with friends." />
+    <meta name="google-client-id" content="__GOOGLE_CLIENT_ID__" />
+    <title>ComChat — your people, your spaces</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="community-rail" aria-label="Communities">
+        <a class="brand-mark" href="#" aria-label="ComChat home"><span>c</span></a>
+        <div class="rail-divider"></div>
+        <div id="community-list" class="community-list"></div>
+        <button class="add-community" id="add-community" aria-label="Add community" title="Add community">+</button>
+        <div class="rail-bottom"><button class="avatar avatar-self" id="safety-info" aria-label="Privacy and safety details">?</button></div>
+      </aside>
+
+      <aside class="spaces-sidebar" id="spaces-sidebar" aria-label="Community spaces">
+        <div class="community-heading">
+          <div class="community-name-row"><span class="community-dot"></span><span id="community-name">Your communities</span><button class="more-button" id="community-menu" aria-label="Community options" hidden>···</button></div>
+          <p id="community-tagline"></p>
+        </div>
+        <button class="invite-button" id="invite-button"><span class="invite-icon">+</span> Create a community</button>
+        <div class="spaces-heading"><span>CHANNELS</span><span class="space-create-actions"><button class="icon-button" id="add-space" aria-label="Create a text channel" title="Create a text channel" hidden>+</button></span></div>
+        <div class="spaces-list" id="spaces-list"></div>
+        <div class="spaces-heading dm-heading"><span>DIRECT MESSAGES</span><button class="icon-button" id="add-dm" aria-label="Start a direct message" title="Start a direct message">+</button></div>
+        <div class="dm-list" id="dm-list"></div>
+        <div class="user-bar">
+          <button class="avatar avatar-self avatar-small" id="profile-button" aria-label="Sign in or set your display name">?</button>
+          <button class="user-info profile-button" id="profile-name"><strong>Guest</strong><span>Sign in / set display name</span></button>
+          <span class="local-status" id="local-status" title="Server account">●</span>
+        </div>
+      </aside>
+
+      <section class="conversation" aria-label="Conversation">
+        <header class="conversation-header">
+          <button class="mobile-menu" id="mobile-menu" aria-label="Open spaces menu">☰</button>
+          <div class="space-title"><span class="hash-mark" id="conversation-icon">#</span><div><h1 id="space-title">No space selected</h1><p id="space-description">Create a community or start a DM.</p></div></div>
+          <div class="header-actions">
+            <label class="sr-only" for="message-search">Search conversation</label>
+            <input id="message-search" class="message-search" type="search" placeholder="Search" />
+            <button class="icon-button info-button" id="space-info" aria-label="About this space" title="About this space">i</button>
+          </div>
+        </header>
+
+        <div class="conversation-scroll" id="conversation-scroll">
+          <section class="welcome-note" id="empty-state"><div class="welcome-spark">✳</div><div><h2 id="welcome-title">Start with a blank slate</h2><p id="welcome-description">No demo chats, communities, or members are loaded. Create a space for your friends.</p><button class="empty-create-button" id="empty-create">Create your first community <span>→</span></button><button class="empty-dm-button" id="empty-dm">Start a direct message</button></div></section>
+          <div class="date-divider" id="message-date" hidden></div>
+          <div class="messages" id="messages" aria-live="polite"></div>
+        </div>
+
+        <div class="composer-wrap">
+          <div class="reply-context" id="reply-context" hidden><span>↳</span><span id="reply-label"></span><button id="cancel-reply" aria-label="Cancel reply">×</button></div>
+          <form class="composer" id="message-form" hidden>
+            <div class="emoji-picker-wrap">
+              <button type="button" class="composer-add" id="emoji-button" aria-label="Choose an emoji" title="Choose an emoji">☺</button>
+              <div class="emoji-picker" id="emoji-picker" role="group" aria-label="Emoji picker" hidden>
+                <button type="button" data-emoji="🙂" aria-label="Slightly smiling face">🙂</button>
+                <button type="button" data-emoji="😂" aria-label="Face with tears of joy">😂</button>
+                <button type="button" data-emoji="❤️" aria-label="Red heart">❤️</button>
+                <button type="button" data-emoji="🎉" aria-label="Party popper">🎉</button>
+                <button type="button" data-emoji="👍" aria-label="Thumbs up">👍</button>
+                <button type="button" data-emoji="✨" aria-label="Sparkles">✨</button>
+              </div>
+            </div>
+            <label class="sr-only" for="message-input">Write a message</label>
+            <textarea id="message-input" rows="1" placeholder="Share a thought…" maxlength="1200"></textarea>
+            <div class="composer-tools"><button class="send-button" type="submit" aria-label="Send message">↑</button></div>
+          </form>
+          <p class="composer-hint" id="composer-hint">Messages sync through this server · Don’t share sensitive info.</p>
+        </div>
+      </section>
+
+      <aside class="members-panel" id="members-panel" aria-label="Members and community details">
+        <div class="panel-heading"><span>MEMBERS</span><button class="icon-button member-search-toggle" id="member-search-toggle" aria-label="Find a member" hidden>⌕</button></div>
+        <div class="member-search-field" id="member-search-field" hidden><input id="member-filter" type="search" placeholder="Find someone…" aria-label="Find a member" /></div>
+        <div id="member-groups"></div>
+        <p class="no-members" id="empty-members">No members loaded.</p>
+      </aside>
+    </main>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <dialog id="action-dialog" class="action-dialog">
+      <form method="dialog" class="dialog-close-row"><button class="dialog-close" aria-label="Close dialog">×</button></form>
+      <div id="dialog-content"></div>
+    </dialog>
+  </body>
+</html>

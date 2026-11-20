@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: comchat
+    runtime: python
+    plan: starter
+    buildCommand: python3 -m py_compile app_server.py
+    startCommand: python3 app_server.py
+    healthCheckPath: /healthz
+    envVars:
+      - key: COMCHAT_HOST
+        value: 0.0.0.0
+      - key: COMCHAT_SECURE_COOKIES
+        value: "1"
+      - key: COMCHAT_DATABASE
+        value: /var/data/comchat.sqlite3
+    disk:
+      name: comchat-data
+      mountPath: /var/data
+      sizeGB: 1
